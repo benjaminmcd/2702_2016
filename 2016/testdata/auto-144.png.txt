@@ -1,0 +1,5 @@
+../testdata/images/auto-144.png
+132
+49
+150
+57

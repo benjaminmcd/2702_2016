@@ -1,6 +1,5 @@
 #include <iostream>
 #include "2702_proc.h"
-
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -11,168 +10,256 @@
 using namespace std;
 using namespace cv;
 
-
-
-void filterOutCrap(vector<string>& crapFiles)
+struct runOnceResult
 {
-    for(unsigned int x = 0; x < crapFiles.size(); x++ )
+    int passCount;
+    int totalError;
+};
+
+vector<string> getListOfTestFiles()
+{
+    vector<string> allFiles;
+    getdir("../testdata/", allFiles);
+
+    vector<string> testFiles;
+    for(size_t i = 0; i < allFiles.size(); ++i )
     {
-        string file = crapFiles[x];
-        if(file.find(".txt") == string::npos)
+        const string& file = allFiles[i];
+        if(file.find(".txt") != string::npos)
         {
-            crapFiles[x] = crapFiles.back();
-            crapFiles.pop_back();
-            x--;
+            testFiles.push_back(file);
         }
     }
+    return testFiles;
 }
 
+runOnceResult runOnce(settings& s);
 
-int runOnce(int par1, int par2);
+int randomNumber(int minNum, int maxNum)
+{
+    int result = (rand() % (maxNum - minNum +1)) + (minNum);
+
+    return result;
+}
+
+void reportABestTry(const runOnceResult& result, settings& best, const char* who)
+{
+    cout<<who<<": Best error:" << result.totalError << " images:" << result.passCount;
+    for(int a=0; a < settings::ARG_COUNT; a=a+1)
+    {
+        // spit out current bests
+        cout <<" best[" << a << "]: " << best.args[a] << " ";
+    }
+    cout<<endl;
+}
+void tuneArgs(settings& s, const bool* DIFFERENTIABLE, const int* LOWER_BOUNDS, const int* UPPER_BOUNDS, runOnceResult& thisTry)
+{
+    const int veryFirstError = thisTry.totalError;
+
+    bool stillFindingImprovements = true;
+    while(stillFindingImprovements)
+    {
+        cout<<"Starting hillclimb cycle, looking to improve on "<<veryFirstError<<endl;
+
+        stillFindingImprovements = false; // assume we won't find any improvements on this cycle
+        for(int ixArg = 0; ixArg < settings::ARG_COUNT; ixArg++)
+        {
+            if(!DIFFERENTIABLE[ixArg]) continue;
+
+            const int modSpan = 5;
+            const int modStep = 2;
+            const int initialValue = s.args[ixArg];
+            int bestValueForThisArg = initialValue;
+            int bestTotalError = thisTry.totalError;
+            for(int mod = max(LOWER_BOUNDS[ixArg], initialValue-modSpan); mod <= min(UPPER_BOUNDS[ixArg]-1, initialValue+modSpan); mod+=modStep)
+            {
+                s.args[ixArg] = mod;
+                s.args[ixArg] = min(s.args[ixArg], UPPER_BOUNDS[ixArg] - 1);
+                s.args[ixArg] = max(s.args[ixArg], LOWER_BOUNDS[ixArg]);
+                cout.setstate(std::ios_base::badbit);
+                runOnceResult modTry = runOnce(s);
+                cout.clear();
+
+                if(modTry.totalError < bestTotalError)
+                {
+                    cout<<"Hillclimber improved from "<<veryFirstError<<" to "<<modTry.totalError<<endl;
+                    bestValueForThisArg = mod; // just use this one now
+                    bestTotalError = modTry.totalError;
+                    thisTry = modTry;
+                    stillFindingImprovements = true; // we found improvements!
+
+
+                    reportABestTry(thisTry, s, "HillClimb");
+                }
+
+            }
+            s.args[ixArg] = bestValueForThisArg;
+        }
+    }
+
+
+}
 
 int main()
 {
+    cout<<"Here's the test with default (on-robot) args"<<endl;
+    settings default_settings(NO_UI);
+    runOnceResult veryFirstTry = runOnce(default_settings);
 
-    int bestx = 0;
-    int besty = 0;
-    int store = 0;
+    cout<<"^^^^^^^^^^"<<endl;
+    cout<<"Above: the results for on-robot args"<<endl;
 
+    int bestScore = veryFirstTry.totalError;
+    //int searchRange = 35;
 
-    for(int x = 0; x < 255; x += 4)
+    const int LOWER_BOUNDS[] = {
+        0,
+        20, // stddev stretch
+        150, //brightest pixel we will keep
+        0, // Dimest pixel we will keep
+    };
+    const int UPPER_BOUNDS[] = {
+        6,
+        45, // stddev stretch
+        255, //brightest pixel we will keep
+        50, // dimest pixel we will keep
+    };
+    const bool DIFFERENTIABLE[] = {
+        true,
+        true,
+        true,
+        true,
+    };
+
+    int tries = 0;
+
+    for (;;)
     {
-        for(int y = 0; y < 255; y += 4)
+        settings s(NO_UI);
+        settings best(NO_UI);
+
+        for(int a=0; a < settings::ARG_COUNT; a=a+1)
         {
-            cout.setstate(std::ios_base::badbit);
-            int thisTry = runOnce(x, y);
-            cout.clear();
-            if(thisTry > store)
-            {
-                bestx = x;
-                besty = y;
-                store = thisTry;
-                cout<<"This is the new best " << store <<" best x " << bestx <<" best y "<< besty << endl;
-            }
+            s.args[a] = randomNumber(LOWER_BOUNDS[a],UPPER_BOUNDS[a]);
+            s.args[a] = min(s.args[a], UPPER_BOUNDS[a] - 1);
+            s.args[a] = max(s.args[a], LOWER_BOUNDS[a]);
+        }
+
+        cout.setstate(std::ios_base::badbit);
+        runOnceResult thisTry = runOnce(s);
+        cout.clear();
+
+        tries++;
+        if (tries % 10000 == 0)
+        {
+            cout<<"Tries: "<<tries<<endl;
+        }
+
+        if (thisTry.totalError < bestScore)
+        {
+            tuneArgs(s, DIFFERENTIABLE, LOWER_BOUNDS, UPPER_BOUNDS, thisTry);
+            // we got a personal best!
+            best.copyArgs(s.args);
+            bestScore = thisTry.totalError;
+            reportABestTry(thisTry, best, "Random");
         }
     }
 }
 
-
-int runOnce(int par1, int par2)
+void RunOneFile (string File, bool shouldFlip, settings &s, int &totalTime, int &widthSum, int &heightSum, int &thereTotal, int &therePasses, int &sumError, ostream& os)
 {
-    vector<string> testFiles;
-    getdir("../testdata/", testFiles);
-    filterOutCrap(testFiles);
-    int totalTime = 0;
+    string imgFile;
+    ifstream in;
+    in.open(File.c_str());
 
+    in>>imgFile;
+
+    Mat img = imread(imgFile.c_str(), CV_LOAD_IMAGE_COLOR);
+    if (img.empty())
+    {
+      cout<<"NOT FOUND"<<endl;
+      return;
+    }
+
+    int left;
+    int right;
+    int top;
+    int bottom;
+    in>> left;
+    in>> top;
+    in>> right;
+    in>> bottom;
+
+    if (shouldFlip)
+    {
+        int leftTemp = left;
+        Mat dst;
+        flip(img ,dst ,1 );
+        img=dst;
+        left=160-right;
+        right=160-leftTemp;
+    }
+
+    int before = getms();
+
+    pos pt = process(img, s);
+    int after = getms();
+    int time = after - before;
+    totalTime +=time;
+
+    int centerX=(left+right)/2;
+    int centerY=(top+bottom)/2;
+    int error=pow(centerX-pt.x,2) +pow(centerY-pt.y,2);
+
+    sumError=sumError+error;
+    widthSum += right - left;
+    heightSum += bottom - top;
+    os << "Error: " << error << " With File : " << imgFile << endl;
+    // left >= 0, that means the target IS present
+    if (pt.x > left && pt.x < right && pt.y > top && pt.y < bottom)
+    {
+        //cout<<"PASSED"<<endl;
+        therePasses ++;
+
+    }
+
+    thereTotal++;
+}
+
+runOnceResult runOnce(settings &s)
+{
+    vector<string> testFiles = getListOfTestFiles();
+
+    int totalTime = 0;
     int therePasses = 0;
     int thereTotal = 0;
-
-    int notTherePasses = 0;
-    int notThereTotal = 0;
-    //int notThere = 0;
-
-    long minValThere = 0;
-    long minValNotThere = 0;
-
     int widthSum = 0;
     int heightSum = 0;
+    int sumError = 0;
 
-    namedWindow("window");
+    if (s.showUI) namedWindow("window");
+
+    ofstream os;
+    os.open("/dev/null");
 
     for(unsigned int x=0; x < testFiles.size(); x++)
     {
         const string& strTxt = testFiles[x];
-        string imgFile;
 
-        ifstream in;
-        in.open(strTxt.c_str());
-
-        in>>imgFile;
-
-        Mat img = imread(imgFile.c_str(), CV_LOAD_IMAGE_COLOR);
-        if(img.empty())
-        {
-          cout<<"NOT FOUND"<<endl;
-        }
-        else
-        {
-            int left;
-            int right;
-            int top;
-            int bottom;
-            in>> left;
-            in>> top;
-            in>> right;
-            in>> bottom;
-
-            int before = getms();
-            int args[3] = {0};
-            args[1] = par1;
-            args[2] = par2;
-            pos pt = process(img, args);
-           int after = getms();
-           int time = after - before;
-           totalTime +=time;
-            if (left < 0)
-            {
-                minValNotThere += pt.minValL;
-                // the txt file said the target isn't there.  let's see how they guessed
-                if(pt.x == -1 && pt.y == -1)
-                {
-                    // they correctly guessed that it isn't there
-                    //cout<<"PASSED"<< " (: not there)" <<endl;
-                    notTherePasses ++;
-
-                }
-                else
-                {
-                    // they guessed it was there, but it's not!
-                    cout<<"FAILED for "<< imgFile <<" (: not there)" << "minVal " << pt.minValL<<endl;
-                }
-                notThereTotal++;
-            }
-            else
-            {
-                widthSum += right - left;
-                heightSum += bottom - top;
-                minValThere += pt.minValL;
-                // left >= 0, that means the target IS present
-                if (pt.x > left && pt.x < right && pt.y > top && pt.y < bottom)
-                {
-                    //cout<<"PASSED"<<endl;
-                    therePasses ++;
-
-                }
-                else
-                {
-                    cout<<"FAILED for "<<imgFile<< "minVal " << pt.minValL<<endl;
-                    {
-                        // draw the image and where they said the target was
-                       /*Mat show = img.clone();
-                       circle(show,Point(pt.x, pt.y) , 20, Scalar(255, 0, 0));
-                       circle(show,Point(pt.x, pt.y) , 3, Scalar(0, 0, 255));
-                       cout << left << "," << top << "," << right << "," << bottom << endl;
-                       cout << pt.x << "," << pt.y << endl;
-                       rectangle(show, Point(left,top), Point(right,bottom), Scalar(255,255,255));
-                       imshow("window", show);*/
-                       //waitKey(0);
-                    }
-                }
-                thereTotal++;
-            }
-
-        }
+        RunOneFile (strTxt, false, s, totalTime, widthSum, heightSum, thereTotal, therePasses, sumError, os );
+        RunOneFile (strTxt, true, s, totalTime, widthSum, heightSum, thereTotal, therePasses, sumError, os );
+        os.flush();
 
     }
-    /*cout << therePasses << " of " << thereTotal << endl;
+    cout << therePasses << " of " << thereTotal << endl;
     cout << "Total time = "<< totalTime << endl;
     cout << "Average time = " << totalTime / testFiles.size() << endl;
-    cout << "Target Not Present : " << notTherePasses <<  " of " << notThereTotal << endl;
-    cout << "average minval there : " << minValThere / thereTotal << endl;
-    cout << "average minval not there : " << minValNotThere / notThereTotal << endl;
-    cout << "average minval : " << (minValThere / thereTotal + minValNotThere / notThereTotal) / 2 << endl;
     cout << "avg heights "<<(heightSum / thereTotal)<<endl;
     cout << "avg widths "<<(widthSum / thereTotal)<<endl;
-*/
-    return therePasses;
+    cout << "total errors "<< sumError <<endl;
+    runOnceResult ret;
+    ret.passCount=therePasses;
+    ret.totalError=sumError;
+    return ret;
 }
+

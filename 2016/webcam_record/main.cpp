@@ -17,7 +17,7 @@ int imgSaved = 0;
 string makeFileName(int img)
 {
     stringstream ssSave;
-    ssSave<<"../testdata/images/auto-"<<imgSaved<<".png";
+    ssSave<<"../testdata/images/unlabeled/auto-"<<imgSaved<<".png";
     return ssSave.str();
 }
 void CallBackFunc(int event, int x, int y, int flags, void* userdata)
@@ -31,7 +31,6 @@ void CallBackFunc(int event, int x, int y, int flags, void* userdata)
     }
 }
 
-
 int main(int argc, char** argv)
 {
     while(fileExists(makeFileName(imgSaved)))
@@ -42,7 +41,7 @@ int main(int argc, char** argv)
     VideoCapture cap;
     // open the default camera, use something different from 0 otherwise;
     // Check VideoCapture documentation.
-    if(!cap.open(0)) //switch to thius for the built-in camera
+    if(!cap.open(1)) //switch to thius for the built-in camera
         return -1;
 
     cap.set(CAP_PROP_CONTRAST, -0.75);

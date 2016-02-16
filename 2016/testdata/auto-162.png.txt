@@ -1,0 +1,5 @@
+../testdata/images/auto-162.png
+98
+54
+119
+63

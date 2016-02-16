@@ -9,110 +9,16 @@
 
 #include <sys/stat.h>
 
+
 using namespace cv;
 
 using namespace std;
 
-Mat templL;
-Mat templR;
-// does a template search!
-/* pos templeOld(Mat img, int* args)
-{
-    if(templ.empty())
-    {
-        templ = imread( "../opencv_lib/refrence.png", 1 );
-        //resize(templ, templ, Size(64,64));
-    }
-    else
-    {
-        ///don't do anything
-    }
+Mat templ;
+Mat templFlip;
 
-
-    /// Create the result matrix
-    Mat result;
-    int result_cols =  img.cols - templ.cols + 1;
-    int result_rows = img.rows - templ.rows + 1;
-
-    result.create( result_rows, result_cols, CV_32FC1 );
-
-    /// Do the Matching and Normalize
-    int match_method = args ? args[0] : 0;
-    if (match_method <=  CV_TM_SQDIFF)
-    {
-        match_method = CV_TM_SQDIFF;
-    }
-    else if(match_method >= CV_TM_CCOEFF_NORMED)
-    {
-        match_method = CV_TM_CCOEFF_NORMED;
-    }
-
-    matchTemplate( img, templ, result, match_method );
-    //normalize( result, result, 0, 1, NORM_MINMAX, -1, Mat() );
-
-    /// Localizing the best match with minMaxLoc
-    double minVal; double maxVal; Point minLoc; Point maxLoc;
-    Point matchLoc;
-    Point centerLoc;
-
-    minMaxLoc( result, &minVal, &maxVal, &minLoc, &maxLoc, Mat() );
-
-    /// For SQDIFF and SQDIFF_NORMED, the best matches are lower values. For all the other methods, the higher the better
-    if( match_method  == CV_TM_SQDIFF || match_method == CV_TM_SQDIFF_NORMED )
-    {
-        matchLoc = minLoc;
-    }
-    else
-    {
-        matchLoc = maxLoc;
-    }
-    centerLoc = matchLoc;
-    centerLoc.x += templ.cols/2;
-    centerLoc.y += templ.rows/2;
-
-    if(args)
-    {
-        Mat draw = result.clone();
-        circle(draw, matchLoc, 20, Scalar(0, 0, 0));
-        circle(draw, matchLoc, 19, Scalar(255, 255, 255));
-        imshow("window", draw);
-
-        Mat draw2 = img.clone();
-        templ.copyTo(draw2.rowRange(matchLoc.y, matchLoc.y + templ.rows).colRange(matchLoc.x, matchLoc.x + templ.cols));
-        circle(draw2, centerLoc, 20, Scalar(0, 0, 0));
-        circle(draw2, centerLoc, 19, Scalar(255, 255, 255));
-        imshow("window2", draw2);
-    }
-
-    pos temp;
-    if (minVal > 19500000 && false)
-    {
-        temp.x = -1;
-        temp.y = -1;
-    }
-    else
-    {
-        temp.x = matchLoc.x + templ.cols/2;
-        temp.y = matchLoc.y + templ.rows/2;
-    }
-    temp.minVal = minVal;
-    temp.maxVal = maxVal;
-    //cout << temp.x << "," <<temp.y << endl;
-    //cout << (int)result.at<uchar>(temp.x,temp.y) << "," << (long)minVal << "," << (long)maxVal << endl;
-    return temp;
-} */
-void drawCircle (Mat& img, Mat& result, Point matchLocL)
-{
-        circle(result, matchLocL, 20, Scalar(0, 255, 255));
-        circle(result, matchLocL, 19, Scalar(255, 255, 255));
-
-        imshow("window", result);
-
-        circle(img, matchLocL, 20, Scalar(0, 255, 255));
-        circle(img, matchLocL, 19, Scalar(255, 255, 255));
-
-        imshow("window2", img);
-}
+float setupTemplPixelsPerInch=-1;
+int setupLineThickness = -1;
 
 void dumptuff ()
 {
@@ -151,108 +57,188 @@ void dumptuff ()
     cout << "CV_64FC3 "<< CV_64FC3<<endl;
     cout << "CV_64FC4 "<< CV_64FC4<<endl;
 }
-pos temple(Mat original, int* args)
+
+
+pos getMatch(const Mat& edgeImage, const Mat& templ, const settings &s, const Mat& normalImage)
 {
-    if(templL.empty())
-    {
-        templL = imread( "../opencv_lib/template.png",CV_LOAD_IMAGE_GRAYSCALE );
-        //cout<<"Templ type: "<< templL.type()<<endl;
-        //cout<<"Templ depth"<< templL.depth()<<endl;
-    }
+    Mat result;
+    int result_cols =  edgeImage.cols - templ.cols + 1;
+    int result_rows = edgeImage.rows - templ.rows + 1;
 
-    /// Do the Matching and Normalize
-    int match_method = args ? args[0] : 0;
-    if (match_method <=  CV_TM_SQDIFF)
-    {
-        match_method = CV_TM_SQDIFF;
-    }
-    else if(match_method >= CV_TM_CCOEFF_NORMED)
-    {
-        match_method = CV_TM_CCOEFF_NORMED;
-    }
+    result.create(result_rows, result_cols, CV_32FC1 );
+    matchTemplate(edgeImage, templ, result, s.match_method() );
+    if (s.showUI) imshow("window5", edgeImage);
 
-    Mat channels[3];
-    split(original, channels);
 
-    Mat edgeDetect;
-    if(args)
-    {
-        Canny(channels[1], edgeDetect, 3*args[1], 3*args[2], 3);
-        //imshow("window2", edgeDetect);
-    }
-    else
-    {
-        Canny(channels[1], edgeDetect, 52, 128);
-    }
-    //cout<<"img type: "<< edgeDetect.type()<<endl;
-    //cout<<"img depth"<< edgeDetect.depth()<<endl;
 
-    Mat resultL;
-    int result_cols =  edgeDetect.cols - templL.cols + 1;
-    int result_rows = edgeDetect.rows - templL.rows + 1;
-
-    resultL.create( result_rows, result_cols, CV_32FC1 );
-    matchTemplate( edgeDetect, templL, resultL, match_method );
     //normalize( result, result, 0, 1, NORM_MINMAX, -1, Mat() );
 
+    Mat pixelsWeLike;
+    Mat pixelsWeLikeforResult;
+
+    inRange(normalImage,
+            Scalar(s.tooDimPixelValue(), s.tooDimPixelValue(), s.tooDimPixelValue()),
+            Scalar(s.tooBrightPixelValue(), s.tooBrightPixelValue(), s.tooBrightPixelValue()),
+            pixelsWeLike);
+
+    pixelsWeLikeforResult = pixelsWeLike(Rect(templ.cols/2, templ.rows/2, result.cols, result.rows));
+    //Mat channels[3];
+    //split(normalImage, channels);
+    //for(int rows = 0; rows < pixelsWeLikeforResult.rows; rows++)
+    //{
+        //for(int cols = 0; cols < pixelsWeLikeforResult.cols; cols++)
+        //{
+            //float& g = channels[1].at<float>(rows + templ.rows/2, cols + templ.cols/2);
+            //float& r = channels[0].at<float>(rows + templ.rows/2, cols + templ.cols/2);
+            //float& b = channels[2].at<float>(rows + templ.rows/2, cols + templ.cols/2);
+            //if(g*greenRejectMultiplyer < b || g*greenRejectMultiplyer < r)
+            //{
+                //pixelsWeLikeforResult.at<uchar>(rows, cols)=0;
+            //}
+        //}
+    //}
+
+    //cout << "templ height : " <<templ.rows << " templ width : " << templ.cols << endl;
+    if (s.showUI) imshow("window2", pixelsWeLikeforResult);
+    // cout << "pixels we like height : " << pixelsWeLikeforResult.rows << " pixels we like width : " << pixelsWeLikeforResult.cols << endl;
+
+    multiply(pixelsWeLikeforResult, result, result,1,CV_32FC1);
+
+    //bitwise_not (pixelsWeHate, pixelsWeHate);
+
     /// Localizing the best match with minMaxLoc
-    double minValL; double maxValL; Point minLocL; Point maxLocL;
-    Point matchLocL;
+    double minVal; double maxVal; Point minLoc; Point maxLoc;
+    Point matchLoc;
 
 
-    minMaxLoc( resultL, &minValL, &maxValL, &minLocL, &maxLocL, Mat() );
+    minMaxLoc( result, &minVal, &maxVal, &minLoc, &maxLoc, Mat() );
 
     /// For SQDIFF and SQDIFF_NORMED, the best matches are lower values. For all the other methods, the higher the better
-    if( match_method  == CV_TM_SQDIFF || match_method == CV_TM_SQDIFF_NORMED )
+    if (s.match_method() == CV_TM_SQDIFF || s.match_method() == CV_TM_SQDIFF_NORMED )
     {
-        matchLocL = minLocL;
+        matchLoc = minLoc;
     }
     else
     {
-        matchLocL = maxLocL;
-    }
-
-    if(args)
-    {
-        /*Mat resultDraw = original.clone();
-        Mat imgDraw = edgeDetect.clone();
-
-        templL.copyTo(imgDraw.rowRange(matchLocL.y, matchLocL.y + templL.rows).colRange(matchLocL.x, matchLocL.x + templL.cols));
-        drawCircle(imgDraw, resultDraw, matchLocL);*/
+        matchLoc = maxLoc;
     }
 
     pos temp;
 
-    /*if (minValL > 6870000)
-    {
-        temp.x = -1;
-        temp.y = -1;
-    }
-    else*/
-    {
-        temp.x = matchLocL.x + templL.cols /2;
-        temp.y = matchLocL.y + templL.rows /2;
-    }
-    temp.minValL = minValL;
-    temp.maxValL = maxValL;
 
-    //cout << temp.x << "," <<temp.y << endl;
-    //cout << (int)result.at<uchar>(temp.x,temp.y) << "," << (long)minVal << "," << (long)maxVal << endl;
+    temp.x = matchLoc.x + templ.cols /2;
+    temp.y = matchLoc.y + templ.rows /2;
+
+    temp.minVal = minVal;
+    temp.maxVal = maxVal;
+
     return temp;
+ }
 
-
-}
-
-
-
-
-
-pos process(Mat img, int* args)
+void setupTemplatePNG()
 {
-    return temple(img, args);
-    //return HSV_convert(img, args);
+    templ = imread("../opencv_lib/template.png");
+    flip(templ, templFlip, 1);
 }
-int getms (void)
+
+void setupTemplate(float templPixelsPerInch, const int lineThickness)
+{
+    templPixelsPerInch = max(templPixelsPerInch, 1.0f);
+    templPixelsPerInch = min(templPixelsPerInch, 3.0f);
+    if(templ.empty() || setupTemplPixelsPerInch != templPixelsPerInch || setupLineThickness != lineThickness)
+    {
+        setupLineThickness = lineThickness;
+        setupTemplPixelsPerInch = templPixelsPerInch;
+
+        const float flRealWidthIn = 20;
+        const float flRealHeightIn = 12;
+        const float flRealThicknessIn = 2.0;
+
+        templ = Mat::zeros(flRealHeightIn * templPixelsPerInch, flRealWidthIn * templPixelsPerInch,  CV_8UC1);
+
+        Point ptTopRight(flRealWidthIn - flRealThicknessIn/2, 0);
+        Point ptBotRight(flRealWidthIn - flRealThicknessIn/2, flRealHeightIn - flRealThicknessIn/2);
+        Point ptBotLeft(0, flRealHeightIn - flRealThicknessIn/2);
+        Point ptTopLeft(0,0);
+        Point ptInnerTopLeft(flRealThicknessIn, 0);
+        Point ptLeftArmpit(flRealThicknessIn, flRealHeightIn - flRealThicknessIn*1.5);
+        Point ptRightArmpit(flRealWidthIn - flRealThicknessIn*1.5f, flRealHeightIn - flRealThicknessIn*1.5);
+        Point ptInnerTopRight(flRealWidthIn - flRealThicknessIn*1.5f, 0);
+
+        Point* rgPointOrder[] = {
+            &ptTopRight,
+            &ptBotRight,
+            &ptBotLeft,
+            &ptTopLeft,
+            &ptInnerTopLeft,
+            &ptLeftArmpit,
+            &ptRightArmpit,
+            &ptInnerTopRight,
+        };
+        const int NUM_POINTS = sizeof(rgPointOrder) / sizeof(rgPointOrder[0]);
+        for(int x = 0;x < NUM_POINTS; x++)
+        {
+            // gotta scale the points
+            Point pt = *rgPointOrder[x];
+            Point pt2 = *rgPointOrder[(x+1) % NUM_POINTS];
+            pt.x *= templPixelsPerInch;
+            pt.y *= templPixelsPerInch;
+            pt2.x *= templPixelsPerInch;
+            pt2.y *= templPixelsPerInch;
+
+            line(templ, pt, pt2, Scalar(255,255,255), lineThickness);
+        }
+
+        flip(templ, templFlip, 1);
+    }
+}
+
+void newEdgeDetect(InputArray img, OutputArray edges)
+{
+    Mat edgeKernel =Mat::zeros(Size(5,5),CV_32F);
+    for(int i=0; i <5; i++)
+    {
+        edgeKernel.at<float>(i,0)=-1;
+        edgeKernel.at<float>(0,i)=-1;
+        edgeKernel.at<float>(i,4)=-1;
+        edgeKernel.at<float>(4,i)=-1;
+    }
+    edgeKernel.at<float>(2,2)=12;
+    filter2D(img,edges,-1,edgeKernel);
+}
+
+pos temple(Mat original, settings& s)
+{
+    //setupTemplate(s.templatePixelsPerInch, s.templateLineThickness);
+    setupTemplatePNG();
+    /// Do the Matching and Normalize
+    if (s.match_method() <=  CV_TM_SQDIFF)
+    {
+        s.set_match_method(CV_TM_SQDIFF);
+    }
+    else if(s.match_method() >= CV_TM_CCOEFF_NORMED)
+    {
+        s.set_match_method(CV_TM_CCOEFF_NORMED);
+    }
+
+    Mat edgeDetect;
+    //Canny(channels[1], edgeDetect, 3*s.edgeDetectParam1, 3*s.edgeDetectParam2, 3);
+    newEdgeDetect(original,edgeDetect);
+
+    if (s.showUI) imshow("window3", edgeDetect);
+
+    pos normal = getMatch(edgeDetect, templ, s, original);
+
+    return normal;
+}
+
+pos process(Mat img, settings& s)
+{
+    pos templResult = temple(img, s);
+    return templResult;
+}
+
+int getms()
 {
     long            ms; // Milliseconds
     time_t          s;  // Seconds
@@ -265,6 +251,7 @@ int getms (void)
 
     return s * 1000 + ms;
 }
+
 int getdir (string dir, vector<string> &files)
 {
     DIR *dp;
@@ -277,6 +264,7 @@ int getdir (string dir, vector<string> &files)
 
         stringstream ss;
         ss<<dir<<dirp->d_name;
+        cout << ss.str()<<endl;
         files.push_back(ss.str());
     }
     closedir(dp);
@@ -288,3 +276,4 @@ bool fileExists (const std::string& name)
   struct stat buffer;
   return (stat (name.c_str(), &buffer) == 0);
 }
+
