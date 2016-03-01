@@ -3,7 +3,8 @@
 ____
 ######System varibles:
 
-$(OPENCV_LIB)= /usr/local/lib
+$(OPENCV_LIB)= /usr/local/lib 
+Dependancy Location Machine Specific
 ___
 ######Dependancies:
 
